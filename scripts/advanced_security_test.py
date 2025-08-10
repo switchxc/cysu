@@ -38,6 +38,7 @@ from app import create_app, db
 from app.models import User, Subject, Material, Submission
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import current_app
+from scripts.test_utils import global_cleanup
 
 class SecurityTester:
     """Класс для комплексного тестирования безопасности"""
@@ -47,6 +48,7 @@ class SecurityTester:
         self.test_results = []
         self.vulnerabilities_found = []
         self.security_score = 100
+        self.created_entities = []  # Список созданных сущностей для очистки
         
     def log_attack(self, attack_type: str, description: str, success: bool, details: str = ""):
         """Логирует результаты атаки"""
@@ -73,39 +75,101 @@ class SecurityTester:
         print("🎯 Имитация атак реальных хакеров...")
         print()
         
+        try:
+            with self.app.app_context():
+                # Тест 1: SQL-инъекции
+                self.test_sql_injection()
+                
+                # Тест 2: XSS атаки
+                self.test_xss_attacks()
+                
+                # Тест 3: CSRF атаки
+                self.test_csrf_attacks()
+                
+                # Тест 4: Брутфорс атаки
+                self.test_bruteforce_attacks()
+                
+                # Тест 5: Инъекции в формы
+                self.test_form_injection()
+                
+                # Тест 6: Обход аутентификации
+                self.test_auth_bypass()
+                
+                # Тест 7: Уязвимости сессий
+                self.test_session_vulnerabilities()
+                
+                # Тест 8: Утечки данных
+                self.test_data_leakage()
+                
+                # Тест 9: Атаки на API
+                self.test_api_vulnerabilities()
+                
+                # Тест 10: Социальная инженерия
+                self.test_social_engineering()
+                
+                # Генерация отчета
+                self.generate_security_report()
+        finally:
+            # Очистка всех созданных данных
+            self.cleanup_all_test_data()
+    
+    def cleanup_all_test_data(self):
+        """Очищает все созданные тестовые данные"""
+        print("\n🧹 ОЧИСТКА ТЕСТОВЫХ ДАННЫХ...")
+        
         with self.app.app_context():
-            # Тест 1: SQL-инъекции
-            self.test_sql_injection()
-            
-            # Тест 2: XSS атаки
-            self.test_xss_attacks()
-            
-            # Тест 3: CSRF атаки
-            self.test_csrf_attacks()
-            
-            # Тест 4: Брутфорс атаки
-            self.test_bruteforce_attacks()
-            
-            # Тест 5: Инъекции в формы
-            self.test_form_injection()
-            
-            # Тест 6: Обход аутентификации
-            self.test_auth_bypass()
-            
-            # Тест 7: Уязвимости сессий
-            self.test_session_vulnerabilities()
-            
-            # Тест 8: Утечки данных
-            self.test_data_leakage()
-            
-            # Тест 9: Атаки на API
-            self.test_api_vulnerabilities()
-            
-            # Тест 10: Социальная инженерия
-            self.test_social_engineering()
-            
-            # Генерация отчета
-            self.generate_security_report()
+            try:
+                # Очистка созданных сущностей
+                for entity in self.created_entities:
+                    if hasattr(entity, 'id'):
+                        try:
+                            db.session.delete(entity)
+                        except Exception as e:
+                            print(f"   ⚠️ Ошибка при удалении {type(entity).__name__}: {e}")
+                
+                # Удаление всех тестовых пользователей по паттерну
+                test_users = User.query.filter(User.username.like('hacker_test_%')).all()
+                for user in test_users:
+                    try:
+                        db.session.delete(user)
+                    except Exception as e:
+                        print(f"   ⚠️ Ошибка при удалении тестового пользователя: {e}")
+                
+                # Удаление тестовых предметов
+                test_subjects = Subject.query.filter(Subject.title.like('Test Subject%')).all()
+                for subject in test_subjects:
+                    try:
+                        db.session.delete(subject)
+                    except Exception as e:
+                        print(f"   ⚠️ Ошибка при удалении тестового предмета: {e}")
+                
+                # Удаление тестовых материалов
+                test_materials = Material.query.filter(Material.title.like('Test Material%')).all()
+                for material in test_materials:
+                    try:
+                        db.session.delete(material)
+                    except Exception as e:
+                        print(f"   ⚠️ Ошибка при удалении тестового материала: {e}")
+                
+                # Удаление тестовых заданий
+                test_submissions = Submission.query.filter(Submission.text.like('Test submission%')).all()
+                for submission in test_submissions:
+                    try:
+                        db.session.delete(submission)
+                    except Exception as e:
+                        print(f"   ⚠️ Ошибка при удалении тестового задания: {e}")
+                
+                # Фиксация изменений
+                db.session.commit()
+                print("   ✅ Все тестовые данные очищены")
+                
+                # Глобальная очистка для дополнительной безопасности
+                print("   🧹 Дополнительная глобальная очистка...")
+                global_cleanup()
+                
+            except Exception as e:
+                print(f"   ❌ Ошибка при очистке данных: {e}")
+                db.session.rollback()
     
     def test_sql_injection(self):
         """Тестирует защиту от SQL-инъекций"""
@@ -590,6 +654,10 @@ class SecurityTester:
         
         db.session.add(user)
         db.session.commit()
+        
+        # Добавляем в список для очистки
+        self.created_entities.append(user)
+        
         return user
     
     def cleanup_test_user(self, user: User):
@@ -647,8 +715,19 @@ def main():
     try:
         tester = SecurityTester()
         tester.run_comprehensive_test()
+        
+        # Финальная глобальная очистка
+        print("\n🧹 ФИНАЛЬНАЯ ГЛОБАЛЬНАЯ ОЧИСТКА...")
+        global_cleanup()
+        
     except Exception as e:
         print(f"❌ Критическая ошибка: {e}")
+        # Даже при ошибке пытаемся очистить данные
+        try:
+            print("\n🧹 АВАРИЙНАЯ ОЧИСТКА ТЕСТОВЫХ ДАННЫХ...")
+            global_cleanup()
+        except:
+            pass
         sys.exit(1)
 
 if __name__ == '__main__':

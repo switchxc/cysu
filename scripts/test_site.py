@@ -29,6 +29,7 @@ from app.utils.email_service import EmailService
 from app.utils.file_storage import FileStorageManager
 from app.utils.payment_service import YooKassaService
 from datetime import datetime, timedelta
+from scripts.test_utils import global_cleanup
 
 
 def test_site_functionality() -> None:
@@ -62,6 +63,10 @@ def test_site_functionality() -> None:
         # Тест 6: Статистика сайта
         print(f"\n📈 Тест 6: Статистика сайта")
         test_site_statistics()
+        
+        # Очистка тестовых данных
+        print(f"\n🧹 Очистка тестовых данных")
+        cleanup_test_data()
         
         print(f"\n🎉 Тестирование завершено!")
 
@@ -240,12 +245,116 @@ def test_site_statistics() -> None:
         print(f"   ❌ Ошибка при получении статистики: {e}")
 
 
+def cleanup_test_data() -> None:
+    """Очищает тестовые данные, созданные во время тестирования"""
+    try:
+        print("   🧹 Очистка тестовых данных...")
+        
+        # Удаляем тестовых пользователей
+        test_users = User.query.filter(User.username.like('test_%')).all()
+        for user in test_users:
+            try:
+                # Удаляем связанные данные
+                Payment.query.filter_by(user_id=user.id).delete()
+                Submission.query.filter_by(user_id=user.id).delete()
+                ChatMessage.query.filter_by(user_id=user.id).delete()
+                Ticket.query.filter_by(user_id=user.id).delete()
+                
+                db.session.delete(user)
+            except Exception as e:
+                print(f"      ⚠️ Ошибка при удалении пользователя {user.username}: {e}")
+        
+        # Удаляем тестовые предметы
+        test_subjects = Subject.query.filter(Subject.title.like('Test%')).all()
+        for subject in test_subjects:
+            try:
+                # Удаляем связанные материалы
+                Material.query.filter_by(subject_id=subject.id).delete()
+                db.session.delete(subject)
+            except Exception as e:
+                print(f"      ⚠️ Ошибка при удалении предмета {subject.name}: {e}")
+        
+        # Удаляем тестовые материалы
+        test_materials = Material.query.filter(Material.title.like('Test%')).all()
+        for material in test_materials:
+            try:
+                db.session.delete(material)
+            except Exception as e:
+                print(f"      ⚠️ Ошибка при удалении материала {material.title}: {e}")
+        
+        # Удаляем orphaned записи
+        cleanup_orphaned_records()
+        
+        db.session.commit()
+        
+        if test_users or test_subjects or test_materials:
+            print(f"   ✅ Очистка завершена: удалено {len(test_users)} пользователей, {len(test_subjects)} предметов, {len(test_materials)} материалов")
+        else:
+            print("   ✅ Тестовых данных для очистки не найдено")
+        
+    except Exception as e:
+        print(f"   ❌ Ошибка при очистке: {e}")
+        db.session.rollback()
+
+
+def cleanup_orphaned_records() -> None:
+    """Удаляет записи без связанных пользователей"""
+    try:
+        # Удаляем платежи без пользователей
+        orphaned_payments = Payment.query.filter(~Payment.user_id.in_([u.id for u in User.query.all()])).all()
+        for payment in orphaned_payments:
+            try:
+                db.session.delete(payment)
+            except Exception as e:
+                print(f"      ⚠️ Ошибка при удалении orphaned платежа {payment.id}: {e}")
+        
+        # Удаляем решения без пользователей
+        orphaned_submissions = Submission.query.filter(~Submission.user_id.in_([u.id for u in User.query.all()])).all()
+        for submission in orphaned_submissions:
+            try:
+                db.session.delete(submission)
+            except Exception as e:
+                print(f"      ⚠️ Ошибка при удалении orphaned решения {submission.id}: {e}")
+        
+        # Удаляем сообщения чата без пользователей
+        orphaned_messages = ChatMessage.query.filter(~ChatMessage.user_id.in_([u.id for u in User.query.all()])).all()
+        for message in orphaned_messages:
+            try:
+                db.session.delete(message)
+            except Exception as e:
+                print(f"      ⚠️ Ошибка при удалении orphaned сообщения {message.id}: {e}")
+        
+        # Удаляем тикеты без пользователей
+        orphaned_tickets = Ticket.query.filter(~Ticket.user_id.in_([u.id for u in User.query.all()])).all()
+        for ticket in orphaned_tickets:
+            try:
+                db.session.delete(ticket)
+            except Exception as e:
+                print(f"      ⚠️ Ошибка при удалении orphaned тикета {ticket.id}: {e}")
+        
+        if orphaned_payments or orphaned_submissions or orphaned_messages or orphaned_tickets:
+            print(f"      🧹 Удалено orphaned записей: {len(orphaned_payments)} платежей, {len(orphaned_submissions)} решений, {len(orphaned_messages)} сообщений, {len(orphaned_tickets)} тикетов")
+        
+    except Exception as e:
+        print(f"      ⚠️ Ошибка при очистке orphaned записей: {e}")
+
+
 def main() -> None:
     """Главная функция скрипта"""
     try:
         test_site_functionality()
+        
+        # Глобальная очистка после завершения тестов
+        print(f"\n🧹 Глобальная очистка тестовых данных...")
+        global_cleanup()
+        
     except Exception as e:
         print(f"❌ Критическая ошибка: {e}")
+        # Даже при ошибке пытаемся очистить данные
+        try:
+            global_cleanup()
+        except:
+            pass
         sys.exit(1)
 
 

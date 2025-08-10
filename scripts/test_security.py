@@ -25,6 +25,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import random
 import string
+from scripts.test_utils import global_cleanup
+
 
 def test_security():
     """Тестирует безопасность системы"""
@@ -59,6 +61,7 @@ def test_security():
         test_session_security()
         
         # Очистка тестовых данных
+        print(f"\n🧹 Очистка тестовых данных")
         cleanup_test_data(test_user)
         
         print(f"\n🎉 Тестирование безопасности завершено!")
@@ -292,19 +295,65 @@ def cleanup_test_data(user):
         print(f"\n🧹 Очистка тестовых данных...")
         
         if user:
-            db.session.delete(user)
-            db.session.commit()
-            print(f"   ✅ Удален тестовый пользователь: {user.username}")
+            try:
+                db.session.delete(user)
+                db.session.commit()
+                print(f"   ✅ Удален тестовый пользователь: {user.username}")
+            except Exception as e:
+                print(f"   ⚠️ Ошибка при удалении пользователя: {e}")
+                db.session.rollback()
+        
+        # Дополнительная очистка по паттернам
+        cleanup_by_pattern()
         
     except Exception as e:
         print(f"   ❌ Ошибка при очистке: {e}")
+
+
+def cleanup_by_pattern():
+    """Дополнительная очистка по паттернам имен"""
+    try:
+        # Удаляем пользователей по паттерну
+        test_users = User.query.filter(User.username.like('test_security_%')).all()
+        for user in test_users:
+            try:
+                db.session.delete(user)
+            except Exception as e:
+                print(f"      ⚠️ Ошибка при удалении тестового пользователя {user.username}: {e}")
+        
+        # Удаляем пользователей с тестовыми email
+        test_email_users = User.query.filter(User.email.like('%@test.com')).all()
+        for user in test_email_users:
+            try:
+                db.session.delete(user)
+            except Exception as e:
+                print(f"      ⚠️ Ошибка при удалении пользователя с тестовым email {user.email}: {e}")
+        
+        db.session.commit()
+        
+        if test_users or test_email_users:
+            print(f"   🧹 Дополнительная очистка: удалено {len(test_users)} пользователей по username, {len(test_email_users)} по email")
+        
+    except Exception as e:
+        print(f"      ⚠️ Ошибка при дополнительной очистке: {e}")
+        db.session.rollback()
 
 def main():
     """Основная функция"""
     try:
         test_security()
+        
+        # Глобальная очистка после завершения тестов
+        print(f"\n🧹 Глобальная очистка тестовых данных...")
+        global_cleanup()
+        
     except Exception as e:
         print(f"❌ Критическая ошибка: {e}")
+        # Даже при ошибке пытаемся очистить данные
+        try:
+            global_cleanup()
+        except:
+            pass
         sys.exit(1)
 
 if __name__ == '__main__':

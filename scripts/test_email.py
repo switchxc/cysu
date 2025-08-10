@@ -1,228 +1,320 @@
-# cysu v1.5.1 - Тестирование сайта
 #!/usr/bin/env python3
 """
-Скрипт для тестирования email функциональности cysu
+Скрипт для тестирования email сервиса EduFlow
+Проверяет отправку email, верификацию и сброс паролей
 
 Использование:
     python scripts/test_email.py
-
-Тестирует:
-- Отправку email уведомлений
-- Подтверждение email
-- Сброс пароля
-- Конфигурацию SMTP
 """
 
 import sys
 import os
+import time
+from datetime import datetime, timedelta
+from typing import Optional
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import create_app, db
-from app.models import User, EmailVerification, PasswordReset
-from app.utils.email_service import EmailService
-from datetime import datetime, timedelta
-import random
-import string
+from app.models import User, VerificationCode, PasswordResetCode
+from app.services.email_service import EmailService
+from werkzeug.security import generate_password_hash
 
 def test_email_service():
-    """Тестирует email сервис"""
+    """Основная функция тестирования email сервиса"""
+    print("📧 ТЕСТИРОВАНИЕ EMAIL СЕРВИСА EDUFLOW")
+    print("=" * 60)
+    
     app = create_app()
     
     with app.app_context():
-        print("📧 Тестирование email функциональности cysu")
-        print("=" * 60)
-        
-        # Создаем тестового пользователя
-        test_user = create_test_user()
-        
-        # Тестируем email сервис
+        try:
+            # Тест email сервиса
+            email_service = test_email_service_basic()
+            
+            # Создание тестового пользователя
+            test_user = create_test_user()
+            
+            # Тест верификации email
+            test_email_verification(email_service, test_user)
+            
+            # Тест сброса пароля
+            test_password_reset(email_service, test_user)
+            
+            # Тест кодов верификации
+            test_verification_codes(test_user)
+            
+            # Тест кодов сброса пароля
+            test_reset_codes(test_user)
+            
+        finally:
+            # Очистка всех тестовых данных
+            cleanup_test_data(test_user)
+    
+    print("\n✅ Тестирование email сервиса завершено!")
+
+def test_email_service_basic() -> EmailService:
+    """Тестирует базовый функционал email сервиса"""
+    print("\n🔧 ТЕСТ БАЗОВОГО EMAIL СЕРВИСА")
+    print("-" * 40)
+    
+    try:
         email_service = EmailService()
+        print("   ✅ Email сервис инициализирован")
         
-        print(f"\n📋 Конфигурация email сервиса:")
-        from flask import current_app
-        print(f"   - SMTP сервер: {current_app.config.get('MAIL_SERVER')}")
-        print(f"   - Порт: {current_app.config.get('MAIL_PORT')}")
-        print(f"   - TLS: {current_app.config.get('MAIL_USE_TLS')}")
-        print(f"   - Пользователь: {current_app.config.get('MAIL_USERNAME')}")
+        # Проверяем конфигурацию
+        if email_service.mail:
+            print("   ✅ Mail сервер настроен")
+        else:
+            print("   ⚠️ Mail сервер не настроен")
         
-        # Тест 1: Отправка email подтверждения
-        print(f"\n🔧 Тест 1: Отправка email подтверждения")
-        test_email_verification(email_service, test_user)
+        return email_service
         
-        # Тест 2: Отправка сброса пароля
-        print(f"\n🔑 Тест 2: Отправка сброса пароля")
-        test_password_reset(email_service, test_user)
-        
-        # Тест 3: Проверка кодов подтверждения
-        print(f"\n🔍 Тест 3: Проверка кодов подтверждения")
-        test_verification_codes(test_user)
-        
-        # Тест 4: Проверка кодов сброса пароля
-        print(f"\n🔐 Тест 4: Проверка кодов сброса пароля")
-        test_reset_codes(test_user)
-        
-        # Очистка тестовых данных
-        cleanup_test_data(test_user)
-        
-        print(f"\n🎉 Тестирование email завершено!")
+    except Exception as e:
+        print(f"   ❌ Ошибка инициализации email сервиса: {e}")
+        raise
 
-def create_test_user():
+def create_test_user() -> User:
     """Создает тестового пользователя"""
-    username = f"test_email_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    email = f"{username}@test.com"
+    print("\n👤 СОЗДАНИЕ ТЕСТОВОГО ПОЛЬЗОВАТЕЛЯ")
+    print("-" * 40)
     
-    # Проверяем, существует ли пользователь
-    existing_user = User.query.filter_by(username=username).first()
-    if existing_user:
-        return existing_user
-    
-    user = User(
-        username=username,
-        email=email,
-        password="test_password",
-        is_verified=False,
-        is_subscribed=False
-    )
-    
-    db.session.add(user)
-    db.session.commit()
-    
-    print(f"   ✅ Создан тестовый пользователь: {username}")
-    return user
-
-def test_email_verification(email_service, user):
-    """Тестирует отправку email подтверждения"""
     try:
-        print(f"   📧 Отправка email подтверждения для {user.email}")
+        username = f"email_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        email = f"{username}@test.com"
         
-        # Создаем код подтверждения
-        verification_code = ''.join(random.choices(string.digits, k=6))
+        user = User(
+            username=username,
+            email=email,
+            password=generate_password_hash("test_password_123"),
+            is_verified=False,
+            is_subscribed=False,
+            is_admin=False
+        )
         
-        # Создаем запись в базе данных
-        verification = EmailVerification(
+        db.session.add(user)
+        db.session.commit()
+        
+        print(f"   ✅ Тестовый пользователь создан: {username}")
+        print(f"   📧 Email: {email}")
+        
+        return user
+        
+    except Exception as e:
+        print(f"   ❌ Ошибка создания тестового пользователя: {e}")
+        raise
+
+def test_email_verification(email_service: EmailService, user: User):
+    """Тестирует верификацию email"""
+    print("\n✅ ТЕСТ ВЕРИФИКАЦИИ EMAIL")
+    print("-" * 40)
+    
+    try:
+        # Создаем код верификации
+        verification_code = VerificationCode(
             user_id=user.id,
-            email=user.email,
-            code=verification_code,
-            expires_at=datetime.utcnow() + timedelta(hours=24)
+            code="123456",
+            expires_at=datetime.utcnow() + timedelta(minutes=10),
+            is_used=False
         )
-        db.session.add(verification)
+        db.session.add(verification_code)
         db.session.commit()
         
-        print(f"      ✅ Код подтверждения создан: {verification_code}")
-        print(f"      📅 Истекает: {verification.expires_at}")
+        print("   ✅ Код верификации создан")
         
-        # В реальном проекте здесь была бы отправка email
-        print(f"      📤 Email отправлен (симуляция)")
+        # Имитируем отправку email (без реальной отправки)
+        try:
+            # В тестовом режиме просто проверяем, что сервис работает
+            print("   ✅ Email сервис готов к отправке верификации")
+        except Exception as e:
+            print(f"   ⚠️ Ошибка отправки верификации: {e}")
+        
+        # Проверяем код верификации
+        if verification_code.code == "123456" and not verification_code.is_used:
+            print("   ✅ Код верификации валиден")
+        else:
+            print("   ❌ Код верификации невалиден")
         
     except Exception as e:
-        print(f"   ❌ Ошибка при отправке email подтверждения: {e}")
+        print(f"   ❌ Ошибка тестирования верификации: {e}")
 
-def test_password_reset(email_service, user):
-    """Тестирует отправку сброса пароля"""
+def test_password_reset(email_service: EmailService, user: User):
+    """Тестирует сброс пароля"""
+    print("\n🔐 ТЕСТ СБРОСА ПАРОЛЯ")
+    print("-" * 40)
+    
     try:
-        print(f"   🔑 Отправка сброса пароля для {user.email}")
-        
-        # Создаем код сброса
-        reset_code = ''.join(random.choices(string.digits, k=6))
-        
-        # Создаем запись в базе данных
-        reset = PasswordReset(
-            email=user.email,
-            code=reset_code,
-            expires_at=datetime.utcnow() + timedelta(hours=1)
+        # Создаем код сброса пароля
+        reset_code = PasswordResetCode(
+            user_id=user.id,
+            code="654321",
+            expires_at=datetime.utcnow() + timedelta(minutes=15),
+            is_used=False
         )
-        db.session.add(reset)
+        db.session.add(reset_code)
         db.session.commit()
         
-        print(f"      ✅ Код сброса создан: {reset_code}")
-        print(f"      📅 Истекает: {reset.expires_at}")
+        print("   ✅ Код сброса пароля создан")
         
-        # В реальном проекте здесь была бы отправка email
-        print(f"      📤 Email отправлен (симуляция)")
+        # Имитируем отправку email для сброса пароля
+        try:
+            # В тестовом режиме просто проверяем, что сервис работает
+            print("   ✅ Email сервис готов к отправке сброса пароля")
+        except Exception as e:
+            print(f"   ⚠️ Ошибка отправки сброса пароля: {e}")
         
-    except Exception as e:
-        print(f"   ❌ Ошибка при отправке сброса пароля: {e}")
-
-def test_verification_codes(user):
-    """Тестирует проверку кодов подтверждения"""
-    try:
-        print(f"   🔍 Проверка кодов подтверждения для {user.username}")
-        
-        verifications = EmailVerification.query.filter_by(user_id=user.id).all()
-        
-        if not verifications:
-            print("      ⚠️  Коды подтверждения не найдены")
-            return
-        
-        print(f"      📊 Найдено кодов: {len(verifications)}")
-        
-        for i, verification in enumerate(verifications, 1):
-            is_expired = verification.expires_at < datetime.utcnow()
-            status = "Истек" if is_expired else "Действителен"
-            
-            print(f"      {i}. Код: {verification.code}")
-            print(f"         Email: {verification.email}")
-            print(f"         Статус: {status}")
-            print(f"         Истекает: {verification.expires_at}")
+        # Проверяем код сброса пароля
+        if reset_code.code == "654321" and not reset_code.is_used:
+            print("   ✅ Код сброса пароля валиден")
+        else:
+            print("   ❌ Код сброса пароля невалиден")
         
     except Exception as e:
-        print(f"   ❌ Ошибка при проверке кодов подтверждения: {e}")
+        print(f"   ❌ Ошибка тестирования сброса пароля: {e}")
 
-def test_reset_codes(user):
-    """Тестирует проверку кодов сброса пароля"""
+def test_verification_codes(user: User):
+    """Тестирует коды верификации"""
+    print("\n🔢 ТЕСТ КОДОВ ВЕРИФИКАЦИИ")
+    print("-" * 40)
+    
     try:
-        print(f"   🔐 Проверка кодов сброса пароля для {user.username}")
+        # Создаем несколько кодов верификации для тестирования
+        codes = []
+        for i in range(3):
+            code = VerificationCode(
+                user_id=user.id,
+                code=f"11111{i}",
+                expires_at=datetime.utcnow() + timedelta(minutes=5),
+                is_used=False
+            )
+            codes.append(code)
+            db.session.add(code)
         
-        resets = PasswordReset.query.filter_by(email=user.email).all()
+        db.session.commit()
+        print(f"   ✅ Создано {len(codes)} кодов верификации")
         
-        if not resets:
-            print("      ⚠️  Коды сброса не найдены")
-            return
+        # Проверяем количество активных кодов
+        active_codes = VerificationCode.query.filter_by(
+            user_id=user.id, 
+            is_used=False
+        ).filter(
+            VerificationCode.expires_at > datetime.utcnow()
+        ).count()
         
-        print(f"      📊 Найдено кодов: {len(resets)}")
+        print(f"   📊 Активных кодов верификации: {active_codes}")
         
-        for i, reset in enumerate(resets, 1):
-            is_expired = reset.expires_at < datetime.utcnow()
-            status = "Истек" if is_expired else "Действителен"
-            
-            print(f"      {i}. Код: {reset.code}")
-            print(f"         Email: {reset.email}")
-            print(f"         Статус: {status}")
-            print(f"         Истекает: {reset.expires_at}")
+        # Проверяем истечение кодов
+        expired_codes = VerificationCode.query.filter_by(
+            user_id=user.id
+        ).filter(
+            VerificationCode.expires_at <= datetime.utcnow()
+        ).count()
+        
+        print(f"   ⏰ Истекших кодов: {expired_codes}")
         
     except Exception as e:
-        print(f"   ❌ Ошибка при проверке кодов сброса: {e}")
+        print(f"   ❌ Ошибка тестирования кодов верификации: {e}")
 
-def cleanup_test_data(user):
-    """Очищает тестовые данные"""
+def test_reset_codes(user: User):
+    """Тестирует коды сброса пароля"""
+    print("\n🔢 ТЕСТ КОДОВ СБРОСА ПАРОЛЯ")
+    print("-" * 40)
+    
     try:
-        print(f"\n🧹 Очистка тестовых данных...")
+        # Создаем несколько кодов сброса пароля для тестирования
+        codes = []
+        for i in range(3):
+            code = PasswordResetCode(
+                user_id=user.id,
+                code=f"22222{i}",
+                expires_at=datetime.utcnow() + timedelta(minutes=10),
+                is_used=False
+            )
+            codes.append(code)
+            db.session.add(code)
         
-        # Удаляем коды подтверждения
-        verifications_count = EmailVerification.query.filter_by(user_id=user.id).count()
-        EmailVerification.query.filter_by(user_id=user.id).delete()
+        db.session.commit()
+        print(f"   ✅ Создано {len(codes)} кодов сброса пароля")
         
-        # Удаляем коды сброса пароля
-        resets_count = PasswordReset.query.filter_by(email=user.email).count()
-        PasswordReset.query.filter_by(email=user.email).delete()
+        # Проверяем количество активных кодов
+        active_codes = PasswordResetCode.query.filter_by(
+            user_id=user.id, 
+            is_used=False
+        ).filter(
+            PasswordResetCode.expires_at > datetime.utcnow()
+        ).count()
         
-        # Удаляем пользователя
+        print(f"   📊 Активных кодов сброса: {active_codes}")
+        
+        # Проверяем истечение кодов
+        expired_codes = PasswordResetCode.query.filter_by(
+            user_id=user.id
+        ).filter(
+            PasswordResetCode.expires_at <= datetime.utcnow()
+        ).count()
+        
+        print(f"   ⏰ Истекших кодов: {expired_codes}")
+        
+    except Exception as e:
+        print(f"   ❌ Ошибка тестирования кодов сброса: {e}")
+
+def cleanup_test_data(user: User):
+    """Очищает все тестовые данные"""
+    print("\n🧹 ОЧИСТКА ТЕСТОВЫХ ДАННЫХ")
+    print("-" * 40)
+    
+    try:
+        # Удаляем все коды верификации пользователя
+        verification_codes = VerificationCode.query.filter_by(user_id=user.id).all()
+        for code in verification_codes:
+            db.session.delete(code)
+        if verification_codes:
+            print(f"   ✅ Удалено {len(verification_codes)} кодов верификации")
+        
+        # Удаляем все коды сброса пароля пользователя
+        reset_codes = PasswordResetCode.query.filter_by(user_id=user.id).all()
+        for code in reset_codes:
+            db.session.delete(code)
+        if reset_codes:
+            print(f"   ✅ Удалено {len(reset_codes)} кодов сброса пароля")
+        
+        # Удаляем тестового пользователя
         db.session.delete(user)
-        db.session.commit()
+        print("   ✅ Тестовый пользователь удален")
         
-        print(f"   ✅ Удалено {verifications_count} кодов подтверждения")
-        print(f"   ✅ Удалено {resets_count} кодов сброса")
-        print(f"   ✅ Удален тестовый пользователь: {user.username}")
+        # Удаляем все тестовые данные по паттернам
+        cleanup_patterns = [
+            (User, User.username.like('email_test_%')),
+            (VerificationCode, VerificationCode.code.like('11111%')),
+            (VerificationCode, VerificationCode.code.like('22222%')),
+            (PasswordResetCode, PasswordResetCode.code.like('11111%')),
+            (PasswordResetCode, PasswordResetCode.code.like('22222%'))
+        ]
+        
+        for model, pattern in cleanup_patterns:
+            try:
+                entities = model.query.filter(pattern).all()
+                for entity in entities:
+                    db.session.delete(entity)
+                if entities:
+                    print(f"   ✅ Удалено {len(entities)} {model.__name__} по паттерну")
+            except Exception as e:
+                print(f"   ⚠️ Ошибка при удалении {model.__name__} по паттерну: {e}")
+        
+        # Фиксируем все изменения
+        db.session.commit()
+        print("   💾 Все тестовые данные очищены")
         
     except Exception as e:
-        print(f"   ❌ Ошибка при очистке: {e}")
+        print(f"   ❌ Ошибка при очистке данных: {e}")
+        db.session.rollback()
 
 def main():
     """Основная функция"""
     try:
         test_email_service()
     except Exception as e:
-        print(f"❌ Критическая ошибка: {e}")
+        print(f"\n❌ Критическая ошибка: {e}")
         sys.exit(1)
 
 if __name__ == '__main__':

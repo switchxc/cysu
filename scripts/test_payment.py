@@ -25,6 +25,7 @@ from app import create_app, db
 from app.models import User, Payment
 from app.utils.payment_service import YooKassaService
 from datetime import datetime, timedelta
+from scripts.test_utils import global_cleanup
 
 
 def test_payment_service() -> None:
@@ -63,6 +64,7 @@ def test_payment_service() -> None:
         test_user_subscription(payment_service, test_user)
         
         # Очистка тестовых данных
+        print(f"\n🧹 Очистка тестовых данных")
         cleanup_test_data(test_user)
         
         print(f"\n🎉 Тестирование завершено!")
@@ -200,29 +202,85 @@ def test_user_subscription(payment_service: YooKassaService, user: User) -> None
 def cleanup_test_data(user: User) -> None:
     """Очищает тестовые данные"""
     try:
-        print(f"\n🧹 Очистка тестовых данных...")
+        print("   🧹 Очистка тестовых данных...")
         
-        # Удаляем платежи пользователя
-        payments_count = Payment.query.filter_by(user_id=user.id).count()
-        Payment.query.filter_by(user_id=user.id).delete()
+        # Удаляем все платежи пользователя
+        payments = Payment.query.filter_by(user_id=user.id).all()
+        payments_count = len(payments)
+        
+        for payment in payments:
+            try:
+                db.session.delete(payment)
+            except Exception as e:
+                print(f"      ⚠️ Ошибка при удалении платежа {payment.id}: {e}")
         
         # Удаляем пользователя
-        db.session.delete(user)
+        try:
+            db.session.delete(user)
+        except Exception as e:
+                print(f"      ⚠️ Ошибка при удалении пользователя: {e}")
+        
+        # Фиксируем изменения
         db.session.commit()
         
         print(f"   ✅ Удалено {payments_count} платежей")
         print(f"   ✅ Удален тестовый пользователь: {user.username}")
         
+        # Дополнительная проверка - удаляем по паттерну на случай, если что-то осталось
+        cleanup_by_pattern()
+        
     except Exception as e:
         print(f"   ❌ Ошибка при очистке: {e}")
+        db.session.rollback()
+
+
+def cleanup_by_pattern() -> None:
+    """Дополнительная очистка по паттернам имен"""
+    try:
+        # Удаляем пользователей по паттерну
+        test_users = User.query.filter(User.username.like('test_user_%')).all()
+        for user in test_users:
+            try:
+                # Удаляем связанные платежи
+                Payment.query.filter_by(user_id=user.id).delete()
+                db.session.delete(user)
+            except Exception as e:
+                print(f"      ⚠️ Ошибка при удалении тестового пользователя {user.username}: {e}")
+        
+        # Удаляем платежи без пользователей (orphaned)
+        orphaned_payments = Payment.query.filter(~Payment.user_id.in_([u.id for u in User.query.all()])).all()
+        for payment in orphaned_payments:
+            try:
+                db.session.delete(payment)
+            except Exception as e:
+                print(f"      ⚠️ Ошибка при удалении orphaned платежа {payment.id}: {e}")
+        
+        db.session.commit()
+        
+        if test_users or orphaned_payments:
+            print(f"   🧹 Дополнительная очистка: удалено {len(test_users)} пользователей, {len(orphaned_payments)} платежей")
+        
+    except Exception as e:
+        print(f"      ⚠️ Ошибка при дополнительной очистке: {e}")
+        db.session.rollback()
 
 
 def main() -> None:
     """Главная функция скрипта"""
     try:
         test_payment_service()
+        
+        # Глобальная очистка после завершения тестов
+        print(f"\n🧹 Глобальная очистка тестовых данных...")
+        global_cleanup()
+        
     except Exception as e:
         print(f"❌ Критическая ошибка: {e}")
+        # Даже при ошибке пытаемся очистить данные
+        try:
+            global_cleanup()
+        except:
+            pass
         sys.exit(1)
 
 
