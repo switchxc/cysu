@@ -35,7 +35,7 @@
                                    class="form-control text-center fw-bold"
                                    style="width: 200px; height: 60px; font-size: 1.5rem; border-radius: 12px; margin: 0 auto; letter-spacing: 8px;"
                                    placeholder="000000"
-                                   oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 6); updateFormCode();"
+                                   oninput="updateFormCode();"
                                    autocomplete="off">
                         </div>
 
@@ -78,7 +78,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Функция для обновления скрытого поля формы
     function updateFormCode() {
-        hiddenInput.value = codeInput.value;
+        // Убираем все нецифровые символы и ограничиваем длину до 6 символов
+        const cleanValue = codeInput.value.replace(/[^0-9]/g, '').slice(0, 6);
+        codeInput.value = cleanValue;
+        hiddenInput.value = cleanValue;
     }
     
     // Обработчик вставки
@@ -88,6 +91,11 @@ document.addEventListener('DOMContentLoaded', function() {
         this.value = pastedData;
         updateFormCode();
     });
+    
+    // Обработчик ввода (для всех событий ввода)
+    codeInput.addEventListener('input', updateFormCode);
+    codeInput.addEventListener('keyup', updateFormCode);
+    codeInput.addEventListener('change', updateFormCode);
     
     // Фокус на поле при загрузке
     codeInput.focus();

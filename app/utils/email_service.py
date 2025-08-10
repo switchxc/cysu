@@ -1,6 +1,7 @@
 from flask_mail import Message
 from .. import mail
 import logging
+from flask import current_app
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class EmailService:
         """
         try:
             subject = "Добро пожаловать в cysu! Подтвердите ваш email"
+            current_app.logger.info(f"Sending verification email to {user_email} with code: '{verification_code}' (type: {type(verification_code)}, length: {len(verification_code)})")
             html_body = f"""
             <!DOCTYPE html>
             <html lang="ru">
@@ -135,7 +137,7 @@ class EmailService:
                             подтверждения ниже
                         </div>
                         <div class="code-container">
-                            <div class="verification-code">{verification_code}</div>
+                            <div class="verification-code">{' '.join(verification_code)}</div>
                             <div class="code-info">Код действителен в течение 15 минут</div>
                         </div>
                         <div class="warning">
@@ -155,7 +157,7 @@ class EmailService:
             
             Для завершения регистрации введите следующий код подтверждения:
             
-            {verification_code}
+            {' '.join(verification_code)}
             
             Код действителен в течение 15 минут.
             
@@ -168,7 +170,7 @@ class EmailService:
             )
             mail.send(msg)
             logger.info(
-                f"Verification email sent successfully to {user_email} with code: {verification_code}"
+                f"Verification email sent successfully to {user_email} with code: {' '.join(verification_code)}"
             )
             return True
         except Exception as e:
@@ -189,6 +191,7 @@ class EmailService:
         """
         try:
             subject = "Новый код подтверждения - cysu"
+            current_app.logger.info(f"Sending resend verification email to {user_email} with code: '{verification_code}' (type: {type(verification_code)}, length: {len(verification_code)})")
             html_body = f"""
             <!DOCTYPE html>
             <html lang="ru">
@@ -300,7 +303,7 @@ class EmailService:
                             подтверждения ниже
                         </div>
                         <div class="code-container">
-                            <div class="verification-code">{verification_code}</div>
+                            <div class="verification-code">{' '.join(verification_code)}</div>
                             <div class="code-info">Код действителен в течение 15 минут</div>
                         </div>
                         <div class="warning">
@@ -320,7 +323,7 @@ class EmailService:
             
             Для завершения регистрации введите следующий код подтверждения:
             
-            {verification_code}
+            {' '.join(verification_code)}
             
             Код действителен в течение 15 минут.
             
@@ -333,7 +336,7 @@ class EmailService:
             )
             mail.send(msg)
             logger.info(
-                f"Resend verification email sent successfully to {user_email} with code: {verification_code}"
+                f"Resend verification email sent successfully to {user_email} with code: {' '.join(verification_code)}"
             )
             return True
         except Exception as e:
@@ -356,6 +359,8 @@ class EmailService:
         """
         try:
             subject = "Восстановление пароля - cysu"
+            current_app.logger.info(f"Sending password reset email to {user_email} with code: '{reset_code}' (type: {type(reset_code)}, length: {len(reset_code)})")
+            
             html_body = f"""
             <!DOCTYPE html>
             <html lang="ru">
@@ -466,7 +471,7 @@ class EmailService:
                             Введите код ниже для создания нового пароля
                         </div>
                         <div class="code-container">
-                            <div class="verification-code">{reset_code}</div>
+                            <div class="verification-code">{' '.join(reset_code)}</div>
                             <div class="code-info">Код действителен в течение 15 минут</div>
                         </div>
                         <div class="warning">
@@ -486,7 +491,7 @@ class EmailService:
             
             Вы запросили восстановление пароля. Введите следующий код для создания нового пароля:
             
-            {reset_code}
+            {' '.join(reset_code)}
             
             Код действителен в течение 15 минут.
             
@@ -499,7 +504,7 @@ class EmailService:
             )
             mail.send(msg)
             logger.info(
-                f"Password reset email sent successfully to {user_email} with code: {reset_code}"
+                f"Password reset email sent successfully to {user_email} with code: {' '.join(reset_code)}"
             )
             return True
         except Exception as e:

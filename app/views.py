@@ -677,7 +677,7 @@ def register():
             db.session.commit()
 
             current_app.logger.info(
-                f"Verification code created for pending registration ({form.email.data}): {verification.code}"
+                f"Verification code created for pending registration ({form.email.data}): {' '.join(verification.code)} (type: {type(verification.code)}, length: {len(verification.code)})"
             )
 
             # Отправляем email с кодом
@@ -743,7 +743,7 @@ def email_verification():
                 db.session.commit()
 
                 current_app.logger.info(
-                    f"User created and email verified: {user.username} ({user.email}) with code: {form.code.data}"
+                    f"User created and email verified: {user.username} ({user.email}) with code: {' '.join(form.code.data)}"
                 )
 
                 # Очищаем сессию
@@ -794,7 +794,7 @@ def resend_verification():
         db.session.commit()
 
         current_app.logger.info(
-            f"New verification code created for pending registration ({pending_registration['email']}): {verification.code}"
+            f"New verification code created for pending registration ({pending_registration['email']}): {' '.join(verification.code)}"
         )
 
         # Обновляем ID в сессии
@@ -837,7 +837,7 @@ def password_reset_request():
             db.session.commit()
 
             current_app.logger.info(
-                f"Password reset code created for {email}: {reset.code}"
+                f"Password reset code created for {email}: {' '.join(reset.code)}"
             )
 
             # Отправляем email с кодом

@@ -39,7 +39,12 @@ class EmailVerification(db.Model):
     @classmethod
     def generate_code(cls) -> str:
         """Генерирует 6-значный код подтверждения"""
-        return ''.join(secrets.choice('0123456789') for _ in range(6))
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        code = ''.join(secrets.choice('0123456789') for _ in range(6))
+        logger.info(f"Generated verification code: '{code}' (type: {type(code)}, length: {len(code)})")
+        return code
     
     @classmethod
     def create_verification(cls, user_id: int = None, email: str = None, expires_in_minutes: int = 15) -> 'EmailVerification':
@@ -71,7 +76,12 @@ class PasswordReset(db.Model):
     def generate_code(cls) -> str:
         """Генерирует 8-символьный код восстановления"""
         import string
-        return ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+        logger.info(f"Generated password reset code: '{code}' (type: {type(code)}, length: {len(code)})")
+        return code
     
     @classmethod
     def create_reset(cls, email: str, expires_in_minutes: int = 15) -> 'PasswordReset':
