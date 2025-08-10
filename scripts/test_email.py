@@ -10,14 +10,14 @@
 import sys
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import create_app, db
-from app.models import User, VerificationCode, PasswordResetCode
-from app.services.email_service import EmailService
+from app.models import User, EmailVerification, PasswordReset
+from app.utils.email_service import EmailService
 from werkzeug.security import generate_password_hash
 
 def test_email_service():
@@ -53,25 +53,30 @@ def test_email_service():
     
     print("\n✅ Тестирование email сервиса завершено!")
 
-def test_email_service_basic() -> EmailService:
+def test_email_service_basic() -> type:
     """Тестирует базовый функционал email сервиса"""
     print("\n🔧 ТЕСТ БАЗОВОГО EMAIL СЕРВИСА")
     print("-" * 40)
     
     try:
-        email_service = EmailService()
-        print("   ✅ Email сервис инициализирован")
+        # EmailService - статический класс, не требует инициализации
+        print("   ✅ Email сервис доступен")
         
-        # Проверяем конфигурацию
-        if email_service.mail:
-            print("   ✅ Mail сервер настроен")
+        # Проверяем, что методы сервиса существуют
+        if hasattr(EmailService, 'send_verification_email'):
+            print("   ✅ Метод отправки верификации доступен")
         else:
-            print("   ⚠️ Mail сервер не настроен")
+            print("   ⚠️ Метод отправки верификации недоступен")
+            
+        if hasattr(EmailService, 'send_password_reset_email'):
+            print("   ✅ Метод отправки сброса пароля доступен")
+        else:
+            print("   ⚠️ Метод отправки сброса пароля недоступен")
         
-        return email_service
+        return EmailService
         
     except Exception as e:
-        print(f"   ❌ Ошибка инициализации email сервиса: {e}")
+        print(f"   ❌ Ошибка проверки email сервиса: {e}")
         raise
 
 def create_test_user() -> User:
@@ -104,17 +109,17 @@ def create_test_user() -> User:
         print(f"   ❌ Ошибка создания тестового пользователя: {e}")
         raise
 
-def test_email_verification(email_service: EmailService, user: User):
+def test_email_verification(email_service: type, user: User):
     """Тестирует верификацию email"""
     print("\n✅ ТЕСТ ВЕРИФИКАЦИИ EMAIL")
     print("-" * 40)
     
     try:
         # Создаем код верификации
-        verification_code = VerificationCode(
+        verification_code = EmailVerification(
             user_id=user.id,
             code="123456",
-            expires_at=datetime.utcnow() + timedelta(minutes=10),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
             is_used=False
         )
         db.session.add(verification_code)
@@ -138,17 +143,17 @@ def test_email_verification(email_service: EmailService, user: User):
     except Exception as e:
         print(f"   ❌ Ошибка тестирования верификации: {e}")
 
-def test_password_reset(email_service: EmailService, user: User):
+def test_password_reset(email_service: type, user: User):
     """Тестирует сброс пароля"""
     print("\n🔐 ТЕСТ СБРОСА ПАРОЛЯ")
     print("-" * 40)
     
     try:
         # Создаем код сброса пароля
-        reset_code = PasswordResetCode(
-            user_id=user.id,
+        reset_code = PasswordReset(
+            email=user.email,
             code="654321",
-            expires_at=datetime.utcnow() + timedelta(minutes=15),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
             is_used=False
         )
         db.session.add(reset_code)
@@ -181,10 +186,10 @@ def test_verification_codes(user: User):
         # Создаем несколько кодов верификации для тестирования
         codes = []
         for i in range(3):
-            code = VerificationCode(
+            code = EmailVerification(
                 user_id=user.id,
                 code=f"11111{i}",
-                expires_at=datetime.utcnow() + timedelta(minutes=5),
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
                 is_used=False
             )
             codes.append(code)
@@ -194,20 +199,20 @@ def test_verification_codes(user: User):
         print(f"   ✅ Создано {len(codes)} кодов верификации")
         
         # Проверяем количество активных кодов
-        active_codes = VerificationCode.query.filter_by(
+        active_codes = EmailVerification.query.filter_by(
             user_id=user.id, 
             is_used=False
         ).filter(
-            VerificationCode.expires_at > datetime.utcnow()
+            EmailVerification.expires_at > datetime.now(timezone.utc)
         ).count()
         
         print(f"   📊 Активных кодов верификации: {active_codes}")
         
         # Проверяем истечение кодов
-        expired_codes = VerificationCode.query.filter_by(
+        expired_codes = EmailVerification.query.filter_by(
             user_id=user.id
         ).filter(
-            VerificationCode.expires_at <= datetime.utcnow()
+            EmailVerification.expires_at <= datetime.now(timezone.utc)
         ).count()
         
         print(f"   ⏰ Истекших кодов: {expired_codes}")
@@ -224,10 +229,10 @@ def test_reset_codes(user: User):
         # Создаем несколько кодов сброса пароля для тестирования
         codes = []
         for i in range(3):
-            code = PasswordResetCode(
-                user_id=user.id,
+            code = PasswordReset(
+                email=user.email,
                 code=f"22222{i}",
-                expires_at=datetime.utcnow() + timedelta(minutes=10),
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
                 is_used=False
             )
             codes.append(code)
@@ -237,20 +242,20 @@ def test_reset_codes(user: User):
         print(f"   ✅ Создано {len(codes)} кодов сброса пароля")
         
         # Проверяем количество активных кодов
-        active_codes = PasswordResetCode.query.filter_by(
-            user_id=user.id, 
+        active_codes = PasswordReset.query.filter_by(
+            email=user.email, 
             is_used=False
         ).filter(
-            PasswordResetCode.expires_at > datetime.utcnow()
+            PasswordReset.expires_at > datetime.now(timezone.utc)
         ).count()
         
         print(f"   📊 Активных кодов сброса: {active_codes}")
         
         # Проверяем истечение кодов
-        expired_codes = PasswordResetCode.query.filter_by(
-            user_id=user.id
+        expired_codes = PasswordReset.query.filter_by(
+            email=user.email
         ).filter(
-            PasswordResetCode.expires_at <= datetime.utcnow()
+            PasswordReset.expires_at <= datetime.now(timezone.utc)
         ).count()
         
         print(f"   ⏰ Истекших кодов: {expired_codes}")
@@ -265,14 +270,14 @@ def cleanup_test_data(user: User):
     
     try:
         # Удаляем все коды верификации пользователя
-        verification_codes = VerificationCode.query.filter_by(user_id=user.id).all()
+        verification_codes = EmailVerification.query.filter_by(user_id=user.id).all()
         for code in verification_codes:
             db.session.delete(code)
         if verification_codes:
             print(f"   ✅ Удалено {len(verification_codes)} кодов верификации")
         
         # Удаляем все коды сброса пароля пользователя
-        reset_codes = PasswordResetCode.query.filter_by(user_id=user.id).all()
+        reset_codes = PasswordReset.query.filter_by(email=user.email).all()
         for code in reset_codes:
             db.session.delete(code)
         if reset_codes:
@@ -285,10 +290,10 @@ def cleanup_test_data(user: User):
         # Удаляем все тестовые данные по паттернам
         cleanup_patterns = [
             (User, User.username.like('email_test_%')),
-            (VerificationCode, VerificationCode.code.like('11111%')),
-            (VerificationCode, VerificationCode.code.like('22222%')),
-            (PasswordResetCode, PasswordResetCode.code.like('11111%')),
-            (PasswordResetCode, PasswordResetCode.code.like('22222%'))
+            (EmailVerification, EmailVerification.code.like('11111%')),
+            (EmailVerification, EmailVerification.code.like('22222%')),
+            (PasswordReset, PasswordReset.code.like('11111%')),
+            (PasswordReset, PasswordReset.code.like('22222%'))
         ]
         
         for model, pattern in cleanup_patterns:
