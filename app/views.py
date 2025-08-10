@@ -79,7 +79,11 @@ def inject_json_parser():
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    try:
+        return User.query.get(int(user_id))
+    except Exception as e:
+        current_app.logger.error(f"Error loading user {user_id}: {e}")
+        return None
 
 
 @bp.route("/", methods=["GET", "POST"])
@@ -89,8 +93,12 @@ def index():
 
     if current_user.is_authenticated:
         # Проверяем подписку пользователя
-        payment_service = YooKassaService()
-        is_subscribed = payment_service.check_user_subscription(current_user)
+        try:
+            payment_service = YooKassaService()
+            is_subscribed = payment_service.check_user_subscription(current_user)
+        except Exception as e:
+            current_app.logger.error(f"Error checking subscription in index: {e}")
+            is_subscribed = False
 
         if current_user.is_admin:
             form = SubjectForm()
@@ -105,7 +113,13 @@ def index():
                 flash("Предмет добавлен")
                 return redirect(url_for("main.index"))
 
-    subjects = Subject.query.all()
+    try:
+        subjects = Subject.query.all()
+    except Exception as e:
+        current_app.logger.error(f"Error querying subjects: {e}")
+        subjects = []
+        flash("Ошибка загрузки предметов. Попробуйте обновить страницу.", "error")
+    
     return render_template(
         "index.html", subjects=subjects, form=form, is_subscribed=is_subscribed
     )
@@ -125,7 +139,12 @@ def subscription():
     current_app.logger.info(f"URL запроса: {request.url}")
     current_app.logger.info(f"Метод запроса: {request.method}")
 
-    prices = current_app.config["SUBSCRIPTION_PRICES"]
+    try:
+        prices = current_app.config["SUBSCRIPTION_PRICES"]
+    except Exception as e:
+        current_app.logger.error(f"Error getting subscription prices: {e}")
+        prices = {}
+        flash("Ошибка загрузки цен подписки.", "error")
 
     # Проверяем, есть ли параметры для создания платежа
     period = request.args.get("period")
@@ -275,20 +294,25 @@ def payment_success():
         current_app.logger.info(
             "Payment ID не найден в параметрах, ищем последний платеж пользователя"
         )
-        payment_record = (
-            Payment.query.filter_by(user_id=current_user.id)
-            .order_by(Payment.created_at.desc())
-            .first()
-        )
+        try:
+            payment_record = (
+                Payment.query.filter_by(user_id=current_user.id)
+                .order_by(Payment.created_at.desc())
+                .first()
+            )
 
-        if payment_record:
-            payment_id = payment_record.yookassa_payment_id
-            current_app.logger.info(f"Найден последний платеж: {payment_id}")
-        else:
-            current_app.logger.error("Платежи пользователя не найдены")
-            # Попробуем найти платеж по email пользователя в ЮKassa
-            current_app.logger.info("Попытка найти платеж по email пользователя")
-            flash("Платеж не найден. Попробуйте оформить подписку снова.", "warning")
+            if payment_record:
+                payment_id = payment_record.yookassa_payment_id
+                current_app.logger.info(f"Найден последний платеж: {payment_id}")
+            else:
+                current_app.logger.error("Платежи пользователя не найдены")
+                # Попробуем найти платеж по email пользователя в ЮKassa
+                current_app.logger.info("Попытка найти платеж по email пользователя")
+                flash("Платеж не найден. Попробуйте оформить подписку снова.", "warning")
+                return redirect(url_for("main.subscription"))
+        except Exception as e:
+            current_app.logger.error(f"Error searching for user payments: {e}")
+            flash("Ошибка поиска платежей. Попробуйте оформить подписку снова.", "error")
             return redirect(url_for("main.subscription"))
 
     # Создаем сервис платежей
@@ -296,27 +320,32 @@ def payment_success():
     current_app.logger.info("Обработка платежа")
 
     # Проверяем, что платеж существует и принадлежит текущему пользователю
-    payment_record = Payment.query.filter_by(
-        yookassa_payment_id=payment_id, user_id=current_user.id
-    ).first()
+    try:
+        payment_record = Payment.query.filter_by(
+            yookassa_payment_id=payment_id, user_id=current_user.id
+        ).first()
 
-    if not payment_record:
-        current_app.logger.error(
-            f"Платеж {payment_id} не найден для пользователя {current_user.id}"
-        )
-        # Попробуем найти платеж только по ID (возможно, проблема с user_id)
-        payment_record = Payment.query.filter_by(yookassa_payment_id=payment_id).first()
-
-        if payment_record:
-            current_app.logger.warning(
-                f"Платеж найден, но принадлежит другому пользователю: {payment_record.user_id}"
+        if not payment_record:
+            current_app.logger.error(
+                f"Платеж {payment_id} не найден для пользователя {current_user.id}"
             )
-            flash("Платеж не принадлежит вам.", "error")
-            return redirect(url_for("main.index"))
-        else:
-            current_app.logger.error(f"Платеж {payment_id} не найден в базе данных")
-            flash("Платеж не найден. Попробуйте оформить подписку снова.", "warning")
-            return redirect(url_for("main.subscription"))
+            # Попробуем найти платеж только по ID (возможно, проблема с user_id)
+            payment_record = Payment.query.filter_by(yookassa_payment_id=payment_id).first()
+
+            if payment_record:
+                current_app.logger.warning(
+                    f"Платеж найден, но принадлежит другому пользователю: {payment_record.user_id}"
+                )
+                flash("Платеж не принадлежит вам.", "error")
+                return redirect(url_for("main.index"))
+            else:
+                current_app.logger.error(f"Платеж {payment_id} не найден в базе данных")
+                flash("Платеж не найден. Попробуйте оформить подписку снова.", "warning")
+                return redirect(url_for("main.subscription"))
+    except Exception as e:
+        current_app.logger.error(f"Error searching for payment {payment_id}: {e}")
+        flash("Ошибка поиска платежа. Попробуйте позже.", "error")
+        return redirect(url_for("main.index"))
 
     current_app.logger.info(f"Платеж найден: {payment_record.status}")
 
@@ -406,14 +435,18 @@ def payment_status():
 
     if form.validate_on_submit():
         payment_id = form.payment_id.data
-        # Создаем сервис платежей
-        payment_service = YooKassaService()
-        status = payment_service.get_payment_status(payment_id)
+        try:
+            # Создаем сервис платежей
+            payment_service = YooKassaService()
+            status = payment_service.get_payment_status(payment_id)
 
-        if "error" in status:
-            flash(f"Ошибка при получении статуса: {status['error']}", "error")
-        else:
-            flash(f"Статус платежа: {status['status']}", "info")
+            if "error" in status:
+                flash(f"Ошибка при получении статуса: {status['error']}", "error")
+            else:
+                flash(f"Статус платежа: {status['status']}", "info")
+        except Exception as e:
+            current_app.logger.error(f"Error checking payment status: {e}")
+            flash("Ошибка при проверке статуса платежа.", "error")
 
     return render_template("payment/payment_status.html", form=form)
 
@@ -422,19 +455,28 @@ def payment_status():
 @login_required
 def api_payment_status(payment_id):
     """API для проверки статуса платежа"""
-    payment_service = YooKassaService()
-    status = payment_service.get_payment_status(payment_id)
-    return jsonify(status)
+    try:
+        payment_service = YooKassaService()
+        status = payment_service.get_payment_status(payment_id)
+        return jsonify(status)
+    except Exception as e:
+        current_app.logger.error(f"Error in api_payment_status: {e}")
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @bp.route("/profile")
 @login_required
 def profile():
     """Страница профиля пользователя"""
-    # Создаем сервис платежей
-    payment_service = YooKassaService()
-    # Проверяем актуальность подписки
-    is_subscribed = payment_service.check_user_subscription(current_user)
+    try:
+        # Создаем сервис платежей
+        payment_service = YooKassaService()
+        # Проверяем актуальность подписки
+        is_subscribed = payment_service.check_user_subscription(current_user)
+    except Exception as e:
+        current_app.logger.error(f"Error checking subscription in profile: {e}")
+        is_subscribed = False
+        flash("Ошибка проверки подписки.", "error")
 
     return render_template(
         "profile.html", user=current_user, is_subscribed=is_subscribed
@@ -443,31 +485,51 @@ def profile():
 
 @bp.route("/subject/<int:subject_id>", methods=["GET", "POST"])
 def subject_detail(subject_id):
-    subject = Subject.query.get_or_404(subject_id)
+    try:
+        subject = Subject.query.get_or_404(subject_id)
+    except Exception as e:
+        current_app.logger.error(f"Error loading subject {subject_id}: {e}")
+        flash("Ошибка загрузки предмета.", "error")
+        return redirect(url_for("main.index"))
 
     # Проверяем подписку для аутентифицированных пользователей
     if current_user.is_authenticated:
-        # Создаем сервис платежей
-        payment_service = YooKassaService()
-        # Проверяем подписку пользователя
-        if not payment_service.check_user_subscription(current_user):
-            flash("Для доступа к предметам необходима активная подписка.", "warning")
-            return redirect(url_for("main.subscription"))
+        try:
+            # Создаем сервис платежей
+            payment_service = YooKassaService()
+            # Проверяем подписку пользователя
+            if not payment_service.check_user_subscription(current_user):
+                flash("Для доступа к предметам необходима активная подписка.", "warning")
+                return redirect(url_for("main.subscription"))
+        except Exception as e:
+            current_app.logger.error(f"Error checking subscription in subject_detail: {e}")
+            flash("Ошибка проверки подписки.", "error")
+            return redirect(url_for("main.index"))
 
-    lectures = Material.query.filter_by(subject_id=subject.id, type="lecture").all()
-    assignments = (
-        Material.query.options(joinedload(Material.submissions))
-        .filter_by(subject_id=subject.id, type="assignment")
-        .all()
-    )
+    try:
+        lectures = Material.query.filter_by(subject_id=subject.id, type="lecture").all()
+        assignments = (
+            Material.query.options(joinedload(Material.submissions))
+            .filter_by(subject_id=subject.id, type="assignment")
+            .all()
+        )
+    except Exception as e:
+        current_app.logger.error(f"Error loading materials for subject {subject.id}: {e}")
+        lectures = []
+        assignments = []
+        flash("Ошибка загрузки материалов.", "error")
     form = None
     user_submissions = {}
     if current_user.is_authenticated:
-        for material in assignments:
-            for sub in material.submissions:
-                if str(sub.user_id) == str(current_user.id) and sub.file:
-                    user_submissions[material.id] = sub
-                    break
+        try:
+            for material in assignments:
+                for sub in material.submissions:
+                    if str(sub.user_id) == str(current_user.id) and sub.file:
+                        user_submissions[material.id] = sub
+                        break
+        except Exception as e:
+            current_app.logger.error(f"Error loading user submissions: {e}")
+            user_submissions = {}
     if current_user.is_authenticated and current_user.is_admin:
         form = MaterialForm()
         form.subject_id.choices = [(subject.id, subject.title)]
@@ -1442,10 +1504,20 @@ def admin_users():
             flash("Ошибка обновления правил короткой ссылки", "error")
 
     # Получаем все короткие ссылки
-    short_links = ShortLink.query.order_by(ShortLink.created_at.desc()).all()
+    try:
+        short_links = ShortLink.query.order_by(ShortLink.created_at.desc()).all()
+    except Exception as e:
+        current_app.logger.error(f"Error loading short links: {e}")
+        short_links = []
+        flash("Ошибка загрузки коротких ссылок.", "error")
 
     # Получаем всех пользователей с информацией о подписке
-    users = User.query.all()
+    try:
+        users = User.query.all()
+    except Exception as e:
+        current_app.logger.error(f"Error loading users: {e}")
+        users = []
+        flash("Ошибка загрузки пользователей.", "error")
 
     return render_template(
         "admin/users.html",
@@ -1466,11 +1538,15 @@ def inject_admin_users():
     Возвращает:
         dict: Словарь с ключом 'users' для использования в шаблонах
     """
-    users = (
-        User.query.all()
-        if current_user.is_authenticated and current_user.is_admin
-        else []
-    )
+    try:
+        users = (
+            User.query.all()
+            if current_user.is_authenticated and current_user.is_admin
+            else []
+        )
+    except Exception as e:
+        current_app.logger.error(f"Error in inject_admin_users: {e}")
+        users = []
     return dict(users=users)
 
 
@@ -1484,8 +1560,12 @@ def inject_subscription_status():
     """
     is_subscribed = False
     if current_user.is_authenticated:
-        payment_service = YooKassaService()
-        is_subscribed = payment_service.check_user_subscription(current_user)
+        try:
+            payment_service = YooKassaService()
+            is_subscribed = payment_service.check_user_subscription(current_user)
+        except Exception as e:
+            current_app.logger.error(f"Error in inject_subscription_status: {e}")
+            is_subscribed = False
     return dict(is_subscribed=is_subscribed)
 
 

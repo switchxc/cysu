@@ -24,22 +24,26 @@ def create_app():
     # Конфигурация из переменных окружения
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default-secret-key-change-in-production')
     # Конфигурация базы данных - создаем в корне проекта
-    db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.db')
+    db_path = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.db'))
     app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', f'sqlite:///{db_path}')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Диагностика базы данных
-    if not app.debug and not app.testing:
-        app.logger.info(f'Database path: {db_path}')
-        app.logger.info(f'Database exists: {os.path.exists(db_path)}')
-        app.logger.info(f'Database readable: {os.access(db_path, os.R_OK)}')
-        app.logger.info(f'Database writable: {os.access(db_path, os.W_OK)}')
+    app.logger.info(f'Database path: {db_path}')
+    app.logger.info(f'Database exists: {os.path.exists(db_path)}')
+    app.logger.info(f'Database readable: {os.access(db_path, os.R_OK)}')
+    app.logger.info(f'Database writable: {os.access(db_path, os.W_OK)}')
     
     # Конфигурация загрузки файлов
     app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', 'app/static/uploads')
     app.config['CHAT_FILES_FOLDER'] = os.getenv('CHAT_FILES_FOLDER', 'app/static/chat_files')
     app.config['TICKET_FILES_FOLDER'] = os.getenv('TICKET_FILES_FOLDER', 'app/static/ticket_files')
     app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 20 * 1024 * 1024))
+    
+    # Создаем необходимые директории для загрузки файлов
+    for folder in [app.config['UPLOAD_FOLDER'], app.config['CHAT_FILES_FOLDER'], app.config['TICKET_FILES_FOLDER']]:
+        if not os.path.exists(folder):
+            os.makedirs(folder, exist_ok=True)
     
     # Конфигурация почты
     app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
@@ -69,48 +73,48 @@ def create_app():
     app.config['LOG_LEVEL'] = os.getenv('LOG_LEVEL', 'INFO')
     
     # Настройка логирования
-    if not app.debug and not app.testing:
-        # Создаем директорию для логов если её нет
-        log_dir = os.path.dirname(app.config['LOG_FILE'])
-        if log_dir and not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-        
-        # Настраиваем файловый обработчик
-        file_handler = logging.FileHandler(app.config['LOG_FILE'])
-        file_handler.setLevel(getattr(logging, app.config['LOG_LEVEL']))
-        
-        # Настраиваем формат логов
-        formatter = logging.Formatter(
-            '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
-        )
-        file_handler.setFormatter(formatter)
-        
-        # Добавляем обработчик к логгеру приложения
-        app.logger.addHandler(file_handler)
-        app.logger.setLevel(getattr(logging, app.config['LOG_LEVEL']))
-        
-        app.logger.info('Приложение запущено')
+    # Создаем директорию для логов если её нет
+    log_dir = os.path.dirname(app.config['LOG_FILE'])
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    
+    # Настраиваем файловый обработчик
+    file_handler = logging.FileHandler(app.config['LOG_FILE'])
+    file_handler.setLevel(getattr(logging, app.config['LOG_LEVEL']))
+    
+    # Настраиваем формат логов
+    formatter = logging.Formatter(
+        '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
+    )
+    file_handler.setFormatter(formatter)
+    
+    # Добавляем обработчик к логгеру приложения
+    app.logger.addHandler(file_handler)
+    app.logger.setLevel(getattr(logging, app.config['LOG_LEVEL']))
+    
+    app.logger.info('Приложение запущено')
     
     db.init_app(app)
     
-    # Проверка подключения к базе данных
+    # Проверка подключения к базе данных и создание таблиц
     try:
         with app.app_context():
+            # Проверяем подключение
             db.engine.connect()
-            if not app.debug and not app.testing:
-                app.logger.info('Database connection successful')
-            # Обеспечиваем наличие таблиц (в том числе для ShortLink)
+            app.logger.info('Database connection successful')
+            
+            # Принудительно создаем все таблицы
             try:
                 db.create_all()
-                if not app.debug and not app.testing:
-                    app.logger.info('All tables ensured via create_all')
+                app.logger.info('All tables created successfully')
             except Exception as e:
-                if not app.debug and not app.testing:
-                    app.logger.error(f'create_all failed: {e}')
+                app.logger.error(f'Error creating tables: {e}')
+                # Если не удалось создать таблицы, логируем ошибку но не прерываем работу
+                app.logger.error(f'create_all failed: {e}')
     except Exception as e:
+        app.logger.error(f'Database connection failed: {e}')
         if not app.debug and not app.testing:
-            app.logger.error(f'Database connection failed: {e}')
-        raise
+            raise
     
     migrate.init_app(app, db)
     login_manager.init_app(app)
