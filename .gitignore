@@ -69,3 +69,4 @@ config_secret.py
 secrets.py
 config.py 
 *.json
+instance/
