@@ -1,4 +1,3 @@
-# cysu v1.5.1 - views.py
 from flask import (
     Blueprint,
     render_template,

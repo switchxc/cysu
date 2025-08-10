@@ -1,4 +1,3 @@
-# cysu v1.5.1 - shortlink_service.py
 from __future__ import annotations
 
 from datetime import datetime, timedelta
